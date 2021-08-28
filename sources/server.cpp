@@ -4,69 +4,104 @@
 #include <iostream>
 #include <cstdio>
 #include <thread>
+#include <atomic>
+#include <unordered_map>
 
 using namespace std;
 
 struct Server{
-    vector<Repository> Repositories;
+    bool IsRunning = true;
+    std::vector<Repository> Repositories;
+    TcpListener ConnectionListener;
 
-    TcpListener Listener;
-    vector<Connection> Connections;
+    std::unordered_map<IpAddress, Connection> Connections;
+
+    Server(){
+        ConnectionListener.listen(s_DefaultServerPort);
+        ConnectionListener.setBlocking(false);
+    }
 
     bool CreateRepository(fs::path path, string name){
         if(!fs::exists(path))
             fs::create_directories(path);
         
-        if(!fs::is_empty(path)){assert(false); return false;}
-            
+        //if(!fs::is_empty(path)){assert(false); return false;}
+ 
         Repositories.emplace_back(move(name), move(path));
 
         return true; 
     }
 
-    void Run(){
-        Listener.listen(s_DefaultServerPort);
-        Listener.setBlocking(false);
+    bool OpenRepository(fs::path path, string name){
+        if(!fs::exists(path))return false;
 
-        for(;;){
-            UpdateState();
-            CheckPendingConnections();
-        }
+        Repositories.emplace_back(move(name), move(path));
+        Repositories.back().UpdateState();
+
+        return true;
     }
 
     void CheckPendingConnections(){
         Connection connection;
-        if(Listener.accept(connection) == Socket::Done){
+        if(ConnectionListener.accept(connection) == Socket::Done){
+
             std::cout << "[Connected]: " << connection.getRemoteAddress() << ":" << connection.getRemotePort() << std::endl;
 
-            Connections.push_back(move(connection));
+            auto remote = connection.getRemoteAddress();
+
+            Connections.emplace(connection.getRemoteAddress(), std::move(connection));
+            
+            assert( Connections.find(remote) != Connections.end());
+            std::cout << Connections.find(remote)->second.getRemoteAddress().toString() << std::endl;
         }
     }
 
-    void UpdateState(){
+    void CheckPendingRequests(){
+        for(auto &c: Connections){
+            
+            sf::Packet packet;
+            if(c.second.receive(packet) == Socket::Done)
+                std::cout << "Connection: "  << c.second.getRemoteAddress() << ":" << c.second.getRemotePort() << " has sent " << packet.getDataSize() << " bytes\n";
+        }
+    }
+
+    void PollRepositoriesState(){
         for(auto &repo: Repositories){
             auto ops = repo.UpdateState();
             if(ops.size())
-                PushChanges(ops);
+                PushChanges(repo);
         }
     }
 
-    void PushChanges(std::vector<RepositoryOperation> operations){
-        std::cout << "StateChanges: " << std::endl;
-        for(const auto &op: operations)
-            std::cout << (int)op.Type << " : " << op.RelativeFilePath << std::endl;
+    void PushChanges(const Repository &repo){
+        std::cout << "Pushing Changes\n";
+        sf::Packet packet;
+        packet << repo.LastState; 
+
+        for(auto &c: Connections){
+            //we have to clone packet because for some reason SFML does not allow to reuse them
+            Packet clone = packet;
+            c.second.send(clone);
+        }
     }
 
+    void Run(){
+        while(IsRunning){
+            CheckPendingConnections();
+            CheckPendingRequests();
+
+            PollRepositoriesState();
+
+            std::this_thread::sleep_for(1s);
+        }
+    }
 };
 
 int main(){
     fs::path path = "/home/hephaestus/Dev/Cortex/RunDir";
 
     Server server;
-    server.CreateRepository("/home/hephaestus/Dev/Cortex/RunDir/TestRepoStorage", "TestRepoName");
+    server.OpenRepository("/home/hephaestus/Dev/Cortex/RunDir/TestRepoStorage", "TestRepoName");
 
-    for(;;){
-        server.UpdateState();
-        std::this_thread::sleep_for(5s);
-    }
+    server.Run();
 }
