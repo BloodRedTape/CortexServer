@@ -50,9 +50,6 @@ struct Server{
             auto remote = connection.getRemoteAddress();
 
             Connections.emplace(connection.getRemoteAddress(), std::move(connection));
-            
-            assert( Connections.find(remote) != Connections.end());
-            std::cout << Connections.find(remote)->second.getRemoteAddress().toString() << std::endl;
         }
     }
 
@@ -75,8 +72,18 @@ struct Server{
 
     void PushChanges(const Repository &repo){
         std::cout << "Pushing Changes\n";
-        sf::Packet packet;
-        packet << repo.LastState; 
+        Packet packet;
+
+        Header header;
+        header.MagicWord = s_MagicWord;
+        header.Type = MsgType::RepositoryStateNotify;
+
+        packet << header;
+
+        RepositoryStateNotify notify;
+        notify.State = repo.LastState; //excessive copy
+
+        packet << notify;
 
         for(auto &c: Connections){
             //we have to clone packet because for some reason SFML does not allow to reuse them
