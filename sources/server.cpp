@@ -49,8 +49,29 @@ struct Server{
 
             auto remote = connection.getRemoteAddress();
 
+            SendRepositoriesInfo(connection, Repositories);
+
             Connections.emplace(connection.getRemoteAddress(), std::move(connection));
         }
+    }
+
+    static void SendRepositoriesInfo(Connection &connection, const std::vector<Repository> &repos){
+        Packet packet;
+
+        Header header;
+        header.MagicWord = s_MagicWord;
+        header.Type = MsgType::RepositoriesInfo;
+
+        packet << header;
+
+        RepositoriesInfo info; // XXX excess copying
+        info.Names.reserve(repos.size());
+        for(const auto &repo: repos)
+            info.Names.push_back(repo.Name);
+        
+        packet << info;
+
+        connection.send(packet);
     }
 
     void CheckPendingRequests(){
@@ -70,8 +91,7 @@ struct Server{
         }
     }
 
-    void PushChanges(const Repository &repo){
-        std::cout << "Pushing Changes\n";
+    static void SendRepositoryState(Connection &connection, const Repository &repo){
         Packet packet;
 
         Header header;
@@ -80,16 +100,20 @@ struct Server{
 
         packet << header;
 
-        RepositoryStateNotify notify;
-        notify.State = repo.LastState; //excessive copy
+        RepositoryStateNotify notify;//XXX excessive copy// we can serialize Repository instead of this shit
+        notify.Name = repo.Name;
+        notify.State = repo.LastState; 
 
         packet << notify;
 
-        for(auto &c: Connections){
-            //we have to clone packet because for some reason SFML does not allow to reuse them
-            Packet clone = packet;
-            c.second.send(clone);
-        }
+        connection.send(packet);
+    }
+
+    void PushChanges(const Repository &repo){
+        std::cout << "Pushing Changes\n";
+
+        for(auto &c: Connections)
+            SendRepositoryState(c.second, repo);
     }
 
     void Run(){
