@@ -11,7 +11,7 @@ using namespace std;
 
 struct Server{
     bool IsRunning = true;
-    std::vector<Repository> Repositories;
+    RepositoriesRegistry Registry;
     TcpListener ConnectionListener;
 
     std::unordered_map<IpAddress, Connection> Connections;
@@ -19,26 +19,6 @@ struct Server{
     Server(){
         ConnectionListener.listen(s_DefaultServerPort);
         ConnectionListener.setBlocking(false);
-    }
-
-    bool CreateRepository(fs::path path, string name){
-        if(!fs::exists(path))
-            fs::create_directories(path);
-        
-        //if(!fs::is_empty(path)){assert(false); return false;}
- 
-        Repositories.emplace_back(move(name), move(path));
-
-        return true; 
-    }
-
-    bool OpenRepository(fs::path path, string name){
-        if(!fs::exists(path))return false;
-
-        Repositories.emplace_back(move(name), move(path));
-        Repositories.back().UpdateState();
-
-        return true;
     }
 
     void CheckPendingConnections(){
@@ -49,7 +29,7 @@ struct Server{
 
             auto remote = connection.getRemoteAddress();
 
-            SendRepositoriesInfo(connection, Repositories);
+            SendRepositoriesInfo(connection, Registry.Repositories);
 
             Connections.emplace(connection.getRemoteAddress(), std::move(connection));
         }
@@ -84,7 +64,7 @@ struct Server{
     }
 
     void PollRepositoriesState(){
-        for(auto &repo: Repositories){
+        for(auto &repo: Registry.Repositories){
             auto ops = repo.UpdateState();
             if(ops.size())
                 PushChanges(repo);
@@ -132,7 +112,7 @@ int main(){
     fs::path path = "/home/hephaestus/Dev/Cortex/RunDir";
 
     Server server;
-    server.OpenRepository("/home/hephaestus/Dev/Cortex/RunDir/TestRepoStorage", "TestRepoName");
+    server.Registry.OpenRepository("/home/hephaestus/Dev/Cortex/RunDir/TestRepoStorage", "TestRepoName");
 
     server.Run();
 }
