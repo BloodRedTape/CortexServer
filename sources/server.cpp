@@ -6,6 +6,7 @@
 #include <thread>
 #include <atomic>
 #include <unordered_map>
+#include "yaml-cpp/yaml.h"
 
 using namespace std;
 
@@ -19,6 +20,30 @@ struct Server{
     Server(){
         ConnectionListener.listen(s_DefaultServerPort);
         ConnectionListener.setBlocking(false);
+    }
+
+    bool Init(const char *init_filename = "init.yaml"){
+        constexpr const char *Open = "Open";
+        constexpr const char *Name = "Name";
+        constexpr const char *Path = "Path";
+
+        if(!fs::exists(init_filename)){
+            std::cerr << "File '" << init_filename << "' does not exist\n";
+            return false;
+        }
+        YAML::Node config = YAML::LoadFile(init_filename);
+
+        if(config[Open]){
+            for(const YAML::Node &repo: config[Open]){
+                if(repo[Name] && repo[Path])
+                    Registry.OpenRepository(repo[Path].as<std::string>(), repo[Name].as<std::string>());
+                else
+                    std::cerr << "Open: Repo is ill-formated" << std::endl;
+            }
+        }
+
+
+        return true;
     }
 
     void CheckPendingConnections(){
@@ -109,10 +134,7 @@ struct Server{
 };
 
 int main(){
-    fs::path path = "/home/hephaestus/Dev/Cortex/RunDir";
-
     Server server;
-    server.Registry.OpenRepository("/home/hephaestus/Dev/Cortex/RunDir/TestRepoStorage", "TestRepoName");
-
-    server.Run();
+    if(server.Init())
+        server.Run();
 }
