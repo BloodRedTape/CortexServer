@@ -54,13 +54,13 @@ struct Server{
 
             auto remote = connection.getRemoteAddress();
 
-            SendRepositoriesInfo(connection, Registry.Repositories);
+            SendRepositoriesInfo(connection, Registry);
 
             Connections.emplace(connection.getRemoteAddress(), std::move(connection));
         }
     }
 
-    static void SendRepositoriesInfo(Connection &connection, const std::vector<Repository> &repos){
+    static void SendRepositoriesInfo(Connection &connection, const RepositoriesRegistry &registry){
         Packet packet;
 
         Header header;
@@ -70,9 +70,9 @@ struct Server{
         packet << header;
 
         RepositoriesInfo info; // XXX excess copying
-        info.Names.reserve(repos.size());
-        for(const auto &repo: repos)
-            info.Names.push_back(repo.Name);
+        info.RepositoryNames.reserve(registry.Repositories.size());
+        for(const auto &repo: registry.Repositories)
+            info.RepositoryNames.push_back(repo.first);
         
         packet << info;
 
@@ -89,14 +89,14 @@ struct Server{
     }
 
     void PollRepositoriesState(){
-        for(auto &repo: Registry.Repositories){
+        for(auto &[name, repo]: Registry.Repositories){
             auto ops = repo.UpdateState();
             if(ops.size())
-                PushChanges(repo);
+                PushChanges(name, repo);
         }
     }
 
-    static void SendRepositoryState(Connection &connection, const Repository &repo){
+    static void SendRepositoryState(Connection &connection, const std::string &name, const RepositoryState &state){
         Packet packet;
 
         Header header;
@@ -106,19 +106,19 @@ struct Server{
         packet << header;
 
         RepositoryStateNotify notify;//XXX excessive copy// we can serialize Repository instead of this shit
-        notify.Name = repo.Name;
-        notify.State = repo.LastState; 
+        notify.RepositoryName = name;
+        notify.RepositoryState = state; 
 
         packet << notify;
 
         connection.send(packet);
     }
 
-    void PushChanges(const Repository &repo){
+    void PushChanges(const std::string &name, const Repository &repo){
         std::cout << "Pushing Changes\n";
 
         for(auto &c: Connections)
-            SendRepositoryState(c.second, repo);
+            SendRepositoryState(c.second, name, repo.LastState);
     }
 
     void Run(){
