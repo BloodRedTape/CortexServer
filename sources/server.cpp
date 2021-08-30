@@ -1,7 +1,7 @@
 #include "common/repository.hpp"
 #include "common/connection.hpp"
 #include "common/protocol.hpp"
-#include <iostream>
+#include "fmt/printf.h"
 #include <cstdio>
 #include <thread>
 #include <atomic>
@@ -28,7 +28,7 @@ struct Server{
         constexpr const char *Path = "Path";
 
         if(!fs::exists(init_filename)){
-            std::cerr << "File '" << init_filename << "' does not exist\n";
+            fmt::print("File '{}' does not exist\n", init_filename);
             return false;
         }
         YAML::Node config = YAML::LoadFile(init_filename);
@@ -38,7 +38,7 @@ struct Server{
                 if(repo[Name] && repo[Path])
                     Registry.OpenRepository(repo[Path].as<std::string>(), repo[Name].as<std::string>());
                 else
-                    std::cerr << "Open: Repo is ill-formated" << std::endl;
+                    fmt::print("Open: Repo is ill-formated\n");
             }
         }
 
@@ -49,8 +49,8 @@ struct Server{
     void CheckPendingConnections(){
         Connection connection;
         if(ConnectionListener.accept(connection) == Socket::Done){
-
-            std::cout << "[Connected]: " << connection.getRemoteAddress() << ":" << connection.getRemotePort() << std::endl;
+            
+            fmt::print("[Connected]: {}:{}\n", connection.getRemoteAddress().toString(), connection.getRemotePort());
 
             auto remote = connection.getRemoteAddress();
 
@@ -84,7 +84,7 @@ struct Server{
             
             sf::Packet packet;
             if(c.second.receive(packet) == Socket::Done)
-                std::cout << "Connection: "  << c.second.getRemoteAddress() << ":" << c.second.getRemotePort() << " has sent " << packet.getDataSize() << " bytes\n";
+                fmt::print("Connection: {}:{} has sent {} bytes\n", c.second.getRemoteAddress().toString(), c.second.getRemotePort(), packet.getDataSize());
         }
     }
 
@@ -115,7 +115,7 @@ struct Server{
     }
 
     void PushChanges(const std::string &name, const Repository &repo){
-        std::cout << "Pushing Changes\n";
+        fmt::print("Pushing changes\n");
 
         for(auto &c: Connections)
             SendRepositoryState(c.second, name, repo.LastState);
