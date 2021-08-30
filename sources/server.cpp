@@ -7,6 +7,7 @@
 #include <atomic>
 #include <unordered_map>
 #include "yaml-cpp/yaml.h"
+#include "common/log.hpp"
 
 using namespace std;
 
@@ -27,10 +28,9 @@ struct Server{
         constexpr const char *Name = "Name";
         constexpr const char *Path = "Path";
 
-        if(!fs::exists(init_filename)){
-            fmt::print("File '{}' does not exist\n", init_filename);
-            return false;
-        }
+        if(!fs::exists(init_filename))
+            return Error("Server::Init: File '{}' does not exist", init_filename);
+        
         YAML::Node config = YAML::LoadFile(init_filename);
 
         if(config[Open]){
@@ -38,7 +38,7 @@ struct Server{
                 if(repo[Name] && repo[Path])
                     Registry.OpenRepository(repo[Path].as<std::string>(), repo[Name].as<std::string>());
                 else
-                    fmt::print("Open: Repo is ill-formated\n");
+                    Error("Server::Init: Repo is ill-formated\n");
             }
         }
 
@@ -50,7 +50,7 @@ struct Server{
         Connection connection;
         if(ConnectionListener.accept(connection) == Socket::Done){
             
-            fmt::print("[Connected]: {}:{}\n", connection.getRemoteAddress().toString(), connection.getRemotePort());
+            Log("{}:{} connected", connection.getRemoteAddress().toString(), connection.getRemotePort());
 
             auto remote = connection.getRemoteAddress();
 
@@ -84,7 +84,7 @@ struct Server{
             
             sf::Packet packet;
             if(c.second.receive(packet) == Socket::Done)
-                fmt::print("Connection: {}:{} has sent {} bytes\n", c.second.getRemoteAddress().toString(), c.second.getRemotePort(), packet.getDataSize());
+                Log("Connection {}:{} has sent {} bytes\n", c.second.getRemoteAddress().toString(), c.second.getRemotePort(), packet.getDataSize());
         }
     }
 
@@ -115,7 +115,7 @@ struct Server{
     }
 
     void PushChanges(const std::string &name, const Repository &repo){
-        fmt::print("Pushing changes\n");
+        Log("Pushing changes\n");
 
         for(auto &c: Connections)
             SendRepositoryState(c.second, name, repo.LastState);
