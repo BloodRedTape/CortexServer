@@ -14,36 +14,20 @@ using namespace std;
 struct Server{
     bool IsRunning = true;
     RepositoriesRegistry Registry;
+    RepositoriesConfig Config;
     TcpListener ConnectionListener;
 
     std::unordered_map<IpAddress, Connection> Connections;
 
-    Server(){
+    Server(const char *config_filepath){
         ConnectionListener.listen(s_DefaultServerPort);
         ConnectionListener.setBlocking(false);
-    }
 
-    bool Init(const char *init_filename = "init.yaml"){
-        constexpr const char *Open = "Open";
-        constexpr const char *Name = "Name";
-        constexpr const char *Path = "Path";
+        if(!Config.LoadFromNode(YAML::LoadFile(config_filepath)))
+            throw Exception("Can't load config");
 
-        if(!fs::exists(init_filename))
-            return Error("Server::Init: File '{}' does not exist", init_filename);
-        
-        YAML::Node config = YAML::LoadFile(init_filename);
-
-        if(config[Open]){
-            for(const YAML::Node &repo: config[Open]){
-                if(repo[Name] && repo[Path])
-                    Registry.OpenRepository(repo[Path].as<std::string>(), repo[Name].as<std::string>());
-                else
-                    Error("Server::Init: Repo is ill-formated\n");
-            }
-        }
-
-
-        return true;
+        for(auto [name, path]: Config)
+            Registry.OpenRepository(std::move(path), std::move(name));
     }
 
     void CheckPendingConnections(){
@@ -57,8 +41,8 @@ struct Server{
 
             AllRepositoriesStateNotify info; // XXX excess copying
             info.Repositories.reserve(Registry.Repositories.size());
-            for(const auto &repo: Registry.Repositories)
-                info.Repositories.push_back({repo.first, repo.second.LastState});
+            for(auto [name, repo]: Registry.Repositories)
+                info.Repositories.push_back({std::move(name), std::move(repo.LastState)});
 
             connection.Send(info);
 
@@ -103,7 +87,7 @@ struct Server{
 };
 
 int main(){
-    Server server;
-    if(server.Init())
-        server.Run();
+    Server server("server_config.yaml");
+
+    server.Run();
 }
