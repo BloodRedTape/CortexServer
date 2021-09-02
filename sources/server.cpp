@@ -54,29 +54,16 @@ struct Server{
 
             auto remote = connection.getRemoteAddress();
 
-            SendRepositoriesInfo(connection, Registry);
+
+            RepositoriesInfo info; // XXX excess copying
+            info.Repositories.reserve(Registry.Repositories.size());
+            for(const auto &repo: Registry.Repositories)
+                info.Repositories.push_back({repo.first, repo.second.LastState});
+
+            connection.Send(info);
 
             Connections.emplace(connection.getRemoteAddress(), std::move(connection));
         }
-    }
-
-    static void SendRepositoriesInfo(Connection &connection, const RepositoriesRegistry &registry){
-        Packet packet;
-
-        Header header;
-        header.MagicWord = s_MagicWord;
-        header.Type = MsgType::RepositoriesInfo;
-
-        packet << header;
-
-        RepositoriesInfo info; // XXX excess copying
-        info.RepositoryNames.reserve(registry.Repositories.size());
-        for(const auto &repo: registry.Repositories)
-            info.RepositoryNames.push_back(repo.first);
-        
-        packet << info;
-
-        connection.send(packet);
     }
 
     void CheckPendingRequests(){
@@ -96,29 +83,11 @@ struct Server{
         }
     }
 
-    static void SendRepositoryState(Connection &connection, const std::string &name, const RepositoryState &state){
-        Packet packet;
-
-        Header header;
-        header.MagicWord = s_MagicWord;
-        header.Type = MsgType::RepositoryStateNotify;
-
-        packet << header;
-
-        RepositoryStateNotify notify;//XXX excessive copy// we can serialize Repository instead of this shit
-        notify.RepositoryName = name;
-        notify.RepositoryState = state; 
-
-        packet << notify;
-
-        connection.send(packet);
-    }
-
     void PushChanges(const std::string &name, const Repository &repo){
         Log("Pushing changes\n");
 
-        for(auto &c: Connections)
-            SendRepositoryState(c.second, name, repo.LastState);
+        for(auto &[addresss, connection]: Connections)
+            connection.Send(RepositoryStateNotify{name, repo.LastState});
     }
 
     void Run(){
