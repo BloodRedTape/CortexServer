@@ -55,7 +55,7 @@ struct Server{
             auto remote = connection.getRemoteAddress();
 
 
-            RepositoriesInfo info; // XXX excess copying
+            AllRepositoriesStateNotify info; // XXX excess copying
             info.Repositories.reserve(Registry.Repositories.size());
             for(const auto &repo: Registry.Repositories)
                 info.Repositories.push_back({repo.first, repo.second.LastState});
